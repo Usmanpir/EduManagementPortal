@@ -1,0 +1,58 @@
+# Single-server production deployment: Postgres + web + background worker.
+#
+#   cp .env.example .env.production   # then fill in real values (see docs/deployment.md)
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Put a TLS-terminating reverse proxy (Caddy, nginx, a cloud load balancer) in front of `web`.
+
+name: eduattend
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-eduattend}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-eduattend}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Applies pending migrations and syncs permissions/plans, then exits. `web` and `worker` wait for it.
+  migrate:
+    build: { context: ., target: tools }
+    env_file: .env.production
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run platform:sync"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  web:
+    build: { context: ., target: web, args: { APP_VERSION: "${APP_VERSION:-dev}" } }
+    restart: unless-stopped
+    env_file: .env.production
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - storage:/app/storage
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  # Sends WhatsApp/SMS/email and runs daily tasks (alerts, reminders, subscription checks).
+  worker:
+    build: { context: ., target: tools }
+    restart: unless-stopped
+    env_file: .env.production
+    volumes:
+      - storage:/app/storage
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:
+  storage:

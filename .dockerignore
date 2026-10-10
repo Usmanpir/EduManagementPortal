@@ -1,0 +1,19 @@
+# Never send secrets, local data or build output into the image build.
+.env
+.env.*
+!.env.example
+node_modules
+.next
+storage
+coverage
+test-results
+playwright-report
+src/generated
+*.tsbuildinfo
+.git
+.github
+.claude
+.vscode
+Dockerfile
+docker-compose*.yml
+npm-debug.log*

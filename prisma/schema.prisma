@@ -1,0 +1,1606 @@
+// EduAttend — multi-tenant school & college management data model.
+//
+// Conventions
+// - UUID primary keys, snake_case table names.
+// - Every tenant-owned table carries `organizationId`; the tenant-scoped Prisma
+//   client (src/server/db/tenant.ts) injects it into every query automatically.
+// - Soft deletes use `deletedAt` / `archivedAt`; historical records are preserved.
+// - Money is stored as Decimal(12,2) in the organization's currency.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+  TRANSFERRED
+  ARCHIVED
+}
+
+enum StaffStatus {
+  ACTIVE
+  ON_LEAVE
+  RESIGNED
+  TERMINATED
+}
+
+enum GuardianRelation {
+  FATHER
+  MOTHER
+  GUARDIAN
+  SIBLING
+  OTHER
+}
+
+enum SubjectType {
+  CORE
+  ELECTIVE
+  LAB
+  ACTIVITY
+}
+
+enum RoomType {
+  CLASSROOM
+  LAB
+  LIBRARY
+  HALL
+  OFFICE
+  OTHER
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  LEAVE
+}
+
+enum StaffAttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  LEAVE
+  HALF_DAY
+}
+
+enum AttendanceSource {
+  MANUAL
+  QR
+  BIOMETRIC
+  RFID
+  IMPORT
+}
+
+enum CorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum LeaveRequesterType {
+  STUDENT
+  STAFF
+}
+
+enum LeaveType {
+  SICK
+  CASUAL
+  ANNUAL
+  EMERGENCY
+  MATERNITY
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum FeeCategory {
+  TUITION
+  ADMISSION
+  EXAM
+  TRANSPORT
+  HOSTEL
+  LIBRARY
+  LAB
+  FINE
+  OTHER
+}
+
+enum FeeFrequency {
+  ONE_TIME
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum DiscountType {
+  NONE
+  PERCENT
+  FIXED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  CHEQUE
+  ONLINE
+  MOBILE_WALLET
+  OTHER
+}
+
+enum PaymentStatus {
+  COMPLETED
+  VOIDED
+}
+
+enum ExamType {
+  QUIZ
+  MONTHLY
+  MIDTERM
+  FINAL
+  MOCK
+  OTHER
+}
+
+enum ExamStatus {
+  DRAFT
+  SCHEDULED
+  ONGOING
+  COMPLETED
+  PUBLISHED
+}
+
+enum ResultStatus {
+  PASS
+  FAIL
+  INCOMPLETE
+}
+
+enum AnnouncementAudience {
+  ORGANIZATION
+  CAMPUS
+  CLASS
+  SECTION
+  TEACHERS
+  STAFF
+  PARENTS
+  STUDENTS
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+  PUSH
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum DocumentCategory {
+  STUDENT
+  TEACHER
+  STAFF
+  FINANCE
+  EXAM
+  GENERAL
+  SUPPORT
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  SUSPENDED
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+  CUSTOM
+}
+
+enum BillingInvoiceStatus {
+  OPEN
+  PAID
+  VOID
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ImportType {
+  STUDENTS
+  TEACHERS
+  STAFF
+}
+
+enum ImportStatus {
+  VALIDATED
+  COMPLETED
+  FAILED
+}
+
+// ───────────────────────── Organizations ─────────────────────────
+
+model Organization {
+  id                    String             @id @default(uuid()) @db.Uuid
+  name                  String
+  slug                  String             @unique
+  legalName             String?
+  email                 String?
+  phone                 String?
+  website               String?
+  address               String?
+  country               String             @default("PK")
+  timezone              String             @default("Asia/Karachi")
+  currency              String             @default("PKR")
+  locale                String             @default("en")
+  logoKey               String?
+  primaryColor          String?
+  /// Typed in src/server/modules/organizations/settings.ts
+  settings              Json               @default("{}")
+  status                OrganizationStatus @default(ACTIVE)
+  onboardingCompletedAt DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  deletedAt             DateTime?
+
+  campuses          Campus[]
+  users             User[]
+  roles             Role[]
+  academicYears     AcademicYear[]
+  departments       Department[]
+  classes           Class[]
+  sections          Section[]
+  subjects          Subject[]
+  students          Student[]
+  guardians         Guardian[]
+  staff             Staff[]
+  rooms             Room[]
+  periods           Period[]
+  subscription      Subscription?
+  auditLogs         AuditLog[]
+  supportTickets    SupportTicket[]
+  invitations       Invitation[]
+  sequences         Sequence[]
+  integrations      IntegrationCredential[]
+  usage             SubscriptionUsage[]
+  billingInvoices   BillingInvoice[]
+  importBatches     ImportBatch[]
+
+  @@map("organizations")
+}
+
+model Campus {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  code           String
+  address        String?
+  city           String?
+  phone          String?
+  email          String?
+  isMain         Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  classes      Class[]
+  sections     Section[]
+  students     Student[]
+  staff        Staff[]
+  rooms        Room[]
+  periods      Period[]
+  userRoles    UserRole[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("campuses")
+}
+
+// ──────────────────────── Identity & access ──────────────────────
+
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  /// Null only for platform (super admin) users.
+  organizationId  String?    @db.Uuid
+  email           String     @unique
+  passwordHash    String?
+  firstName       String
+  lastName        String
+  phone           String?
+  avatarKey       String?
+  isSuperAdmin    Boolean    @default(false)
+  status          UserStatus @default(ACTIVE)
+  locale          String?
+  preferences     Json       @default("{}")
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
+
+  organization        Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sessions            Session[]
+  roles               UserRole[]
+  passwordResetTokens PasswordResetToken[]
+  notifications       Notification[]
+  student             Student?
+  guardian            Guardian?
+  staff               Staff?
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Session {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  /// SHA-256 of the opaque session token; the raw token only lives in the cookie.
+  tokenHash  String   @unique
+  /// Active campus filter for this session; null = organization-wide view.
+  campusId   String?  @db.Uuid
+  ipAddress  String?
+  userAgent  String?
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model Invitation {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  email          String
+  roleId         String    @db.Uuid
+  campusId       String?   @db.Uuid
+  tokenHash      String    @unique
+  invitedById    String?   @db.Uuid
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, email])
+  @@map("invitations")
+}
+
+model Role {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  /// Stable machine key, e.g. "admin", "teacher". System roles cannot be deleted.
+  key            String
+  name           String
+  description    String?
+  isSystem       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissions  RolePermission[]
+  users        UserRole[]
+  invitations  Invitation[]
+
+  @@unique([organizationId, key])
+  @@map("roles")
+}
+
+model Permission {
+  id          String @id @default(uuid()) @db.Uuid
+  /// e.g. "students.view", "attendance.mark"
+  key         String @unique
+  module      String
+  action      String
+  description String
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @db.Uuid
+  permissionId String @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  roleId         String   @db.Uuid
+  /// Restricts the role to one campus; null = all campuses.
+  campusId       String?  @db.Uuid
+  createdAt      DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  campus Campus? @relation(fields: [campusId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId, campusId])
+  @@index([organizationId])
+  @@map("user_roles")
+}
+
+// ─────────────────────────── Academics ───────────────────────────
+
+model AcademicYear {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  startDate      DateTime @db.Date
+  endDate        DateTime @db.Date
+  isCurrent      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sections     Section[]
+  exams        Exam[]
+  feeStructures FeeStructure[]
+
+  @@unique([organizationId, name])
+  @@map("academic_years")
+}
+
+model Department {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  code           String
+  description    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  classes      Class[]
+  subjects     Subject[]
+  staff        Staff[]
+
+  @@unique([organizationId, code])
+  @@map("departments")
+}
+
+model Class {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  campusId       String    @db.Uuid
+  departmentId   String?   @db.Uuid
+  name           String
+  /// Ordering key (e.g. 1 for Grade 1, 11 for First Year).
+  level          Int       @default(0)
+  description    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campus       Campus         @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  department   Department?    @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  sections     Section[]
+  subjects     ClassSubject[]
+  students     Student[]
+  feeStructures FeeStructure[]
+  examSubjects ExamSubject[]
+
+  @@unique([campusId, name])
+  @@index([organizationId, campusId])
+  @@map("classes")
+}
+
+model Section {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  campusId       String    @db.Uuid
+  classId        String    @db.Uuid
+  academicYearId String?   @db.Uuid
+  name           String
+  capacity       Int?
+  classTeacherId String?   @db.Uuid
+  roomId         String?   @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campus             Campus              @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  class              Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
+  academicYear       AcademicYear?       @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  classTeacher       Staff?              @relation("ClassTeacher", fields: [classTeacherId], references: [id], onDelete: SetNull)
+  room               Room?               @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  students           Student[]
+  teachingAssignments TeacherSubject[]
+  timetableEntries   TimetableEntry[]
+  attendanceSessions AttendanceSession[]
+  attendance         Attendance[]
+
+  @@unique([classId, name])
+  @@index([organizationId, campusId])
+  @@index([classTeacherId])
+  @@map("sections")
+}
+
+model Subject {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @db.Uuid
+  departmentId   String?     @db.Uuid
+  name           String
+  code           String
+  type           SubjectType @default(CORE)
+  color          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
+
+  organization        Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department          Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  classes             ClassSubject[]
+  teachingAssignments TeacherSubject[]
+  timetableEntries    TimetableEntry[]
+  examSubjects        ExamSubject[]
+
+  @@unique([organizationId, code])
+  @@map("subjects")
+}
+
+model ClassSubject {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  classId        String   @db.Uuid
+  subjectId      String   @db.Uuid
+  periodsPerWeek Int?
+  createdAt      DateTime @default(now())
+
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, subjectId])
+  @@index([organizationId])
+  @@map("class_subjects")
+}
+
+/// Teaching assignment: which teacher teaches which subject to which section.
+model TeacherSubject {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  teacherId      String   @db.Uuid
+  sectionId      String   @db.Uuid
+  subjectId      String   @db.Uuid
+  createdAt      DateTime @default(now())
+
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, subjectId])
+  @@index([organizationId, teacherId])
+  @@map("teacher_subjects")
+}
+
+model Room {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  campusId       String    @db.Uuid
+  name           String
+  code           String?
+  capacity       Int?
+  type           RoomType  @default(CLASSROOM)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campus           Campus           @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  sections         Section[]
+  timetableEntries TimetableEntry[]
+  examSubjects     ExamSubject[]
+
+  @@unique([campusId, name])
+  @@index([organizationId])
+  @@map("rooms")
+}
+
+model Period {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  campusId       String   @db.Uuid
+  name           String
+  /// Minutes from midnight in the organization's timezone.
+  startMinute    Int
+  endMinute      Int
+  sortOrder      Int
+  isBreak        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campus           Campus              @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  timetableEntries TimetableEntry[]
+  attendanceSessions AttendanceSession[]
+
+  @@unique([campusId, sortOrder])
+  @@index([organizationId])
+  @@map("periods")
+}
+
+/// One weekly slot. Unique constraints make section/teacher/room double-booking impossible.
+model TimetableEntry {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  campusId       String   @db.Uuid
+  sectionId      String   @db.Uuid
+  subjectId      String   @db.Uuid
+  teacherId      String?  @db.Uuid
+  roomId         String?  @db.Uuid
+  periodId       String   @db.Uuid
+  /// ISO weekday: 1 = Monday … 7 = Sunday
+  dayOfWeek      Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  section Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  room    Room?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  period  Period   @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, dayOfWeek, periodId])
+  @@unique([teacherId, dayOfWeek, periodId])
+  @@unique([roomId, dayOfWeek, periodId])
+  @@index([organizationId, campusId])
+  @@map("timetables")
+}
+
+// ──────────────────────────── People ─────────────────────────────
+
+model Student {
+  id                    String        @id @default(uuid()) @db.Uuid
+  organizationId        String        @db.Uuid
+  campusId              String        @db.Uuid
+  classId               String?       @db.Uuid
+  sectionId             String?       @db.Uuid
+  userId                String?       @unique @db.Uuid
+  admissionNo           String
+  rollNumber            String?
+  /// Numeric part of rollNumber so registers sort 1, 2, … 10 instead of 1, 10, 2.
+  rollOrder             Int?
+  firstName             String
+  lastName              String
+  gender                Gender?
+  dateOfBirth           DateTime?     @db.Date
+  bFormNumber           String?
+  cnic                  String?
+  bloodGroup            String?
+  religion              String?
+  nationality           String?
+  phone                 String?
+  email                 String?
+  address               String?
+  city                  String?
+  photoKey              String?
+  admissionDate         DateTime?     @db.Date
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  medicalNotes          String?
+  notes                 String?
+  status                StudentStatus @default(ACTIVE)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  archivedAt            DateTime?
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campus       Campus            @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  class        Class?            @relation(fields: [classId], references: [id], onDelete: SetNull)
+  section      Section?          @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  user         User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guardians    StudentGuardian[]
+  attendance   Attendance[]
+  leaveRequests LeaveRequest[]
+  fees         StudentFee[]
+  invoices     Invoice[]
+  payments     Payment[]
+  marks        Mark[]
+  results      Result[]
+
+  @@unique([organizationId, admissionNo])
+  @@index([organizationId, campusId, status])
+  @@index([sectionId])
+  @@index([organizationId, lastName, firstName])
+  @@map("students")
+}
+
+model Guardian {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  userId         String?           @unique @db.Uuid
+  firstName      String
+  lastName       String
+  relation       GuardianRelation  @default(GUARDIAN)
+  phone          String
+  whatsapp       String?
+  email          String?
+  cnic           String?
+  occupation     String?
+  address        String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  students     StudentGuardian[]
+
+  @@index([organizationId, phone])
+  @@map("guardians")
+}
+
+model StudentGuardian {
+  organizationId        String           @db.Uuid
+  studentId             String           @db.Uuid
+  guardianId            String           @db.Uuid
+  relation              GuardianRelation @default(GUARDIAN)
+  isPrimary             Boolean          @default(false)
+  receivesNotifications Boolean          @default(true)
+  createdAt             DateTime         @default(now())
+
+  student  Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  guardian Guardian @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+
+  @@id([studentId, guardianId])
+  @@index([guardianId])
+  @@map("student_guardians")
+}
+
+/// Every employee. Teachers additionally have a `Teacher` record.
+model Staff {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @db.Uuid
+  campusId       String      @db.Uuid
+  departmentId   String?     @db.Uuid
+  userId         String?     @unique @db.Uuid
+  employeeCode   String
+  firstName      String
+  lastName       String
+  gender         Gender?
+  dateOfBirth    DateTime?   @db.Date
+  cnic           String?
+  designation    String
+  phone          String?
+  email          String?
+  address        String?
+  photoKey       String?
+  joiningDate    DateTime?   @db.Date
+  status         StaffStatus @default(ACTIVE)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
+
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campus         Campus            @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  department     Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  user           User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  teacher        Teacher?
+  classTeacherOf Section[]         @relation("ClassTeacher")
+  attendance     StaffAttendance[]
+  leaveRequests  LeaveRequest[]
+
+  @@unique([organizationId, employeeCode])
+  @@index([organizationId, campusId, status])
+  @@map("staff")
+}
+
+model Teacher {
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String   @db.Uuid
+  staffId           String   @unique @db.Uuid
+  qualification     String?
+  specialization    String?
+  maxPeriodsPerWeek Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  staff            Staff            @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  subjects         TeacherSubject[]
+  timetableEntries TimetableEntry[]
+
+  @@index([organizationId])
+  @@map("teachers")
+}
+
+// ─────────────────────────── Attendance ──────────────────────────
+
+/// One roll-call: a section on a date, for the whole day or one period.
+model AttendanceSession {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  campusId       String    @db.Uuid
+  sectionId      String    @db.Uuid
+  date           DateTime  @db.Date
+  /// "DAY" in daily mode, otherwise the period id. Non-null so uniqueness holds.
+  slot           String
+  periodId       String?   @db.Uuid
+  subjectId      String?   @db.Uuid
+  takenById      String?   @db.Uuid
+  presentCount   Int       @default(0)
+  absentCount    Int       @default(0)
+  lateCount      Int       @default(0)
+  leaveCount     Int       @default(0)
+  submittedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  section Section      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  period  Period?      @relation(fields: [periodId], references: [id], onDelete: SetNull)
+  records Attendance[]
+
+  @@unique([sectionId, date, slot])
+  @@index([organizationId, campusId, date])
+  @@map("attendance_sessions")
+}
+
+model Attendance {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  campusId       String           @db.Uuid
+  sessionId      String           @db.Uuid
+  studentId      String           @db.Uuid
+  sectionId      String           @db.Uuid
+  date           DateTime         @db.Date
+  slot           String
+  status         AttendanceStatus
+  note           String?
+  source         AttendanceSource @default(MANUAL)
+  markedById     String?          @db.Uuid
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  session     AttendanceSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student     Student                @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  section     Section                @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  corrections AttendanceCorrection[]
+
+  @@unique([studentId, date, slot])
+  @@index([organizationId, date, status])
+  @@index([sectionId, date])
+  @@map("attendance")
+}
+
+model AttendanceCorrection {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  attendanceId   String           @db.Uuid
+  previousStatus AttendanceStatus
+  newStatus      AttendanceStatus
+  reason         String
+  status         CorrectionStatus @default(PENDING)
+  requestedById  String           @db.Uuid
+  reviewedById   String?          @db.Uuid
+  reviewedAt     DateTime?
+  createdAt      DateTime         @default(now())
+
+  attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@map("attendance_corrections")
+}
+
+model StaffAttendance {
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String                @db.Uuid
+  campusId       String                @db.Uuid
+  staffId        String                @db.Uuid
+  date           DateTime              @db.Date
+  status         StaffAttendanceStatus
+  checkInAt      DateTime?
+  checkOutAt     DateTime?
+  source         AttendanceSource      @default(MANUAL)
+  deviceId       String?
+  note           String?
+  markedById     String?               @db.Uuid
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, date])
+  @@index([organizationId, campusId, date])
+  @@map("staff_attendance")
+}
+
+model LeaveRequest {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  campusId       String             @db.Uuid
+  requesterType  LeaveRequesterType
+  studentId      String?            @db.Uuid
+  staffId        String?            @db.Uuid
+  type           LeaveType
+  startDate      DateTime           @db.Date
+  endDate        DateTime           @db.Date
+  reason         String
+  status         LeaveStatus        @default(PENDING)
+  requestedById  String             @db.Uuid
+  reviewedById   String?            @db.Uuid
+  reviewedAt     DateTime?
+  reviewNote     String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  staff   Staff?   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([studentId])
+  @@index([staffId])
+  @@map("leave_requests")
+}
+
+// ──────────────────────────── Finance ────────────────────────────
+
+model FeeStructure {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  campusId       String?      @db.Uuid
+  academicYearId String?      @db.Uuid
+  classId        String?      @db.Uuid
+  name           String
+  category       FeeCategory
+  amount         Decimal      @db.Decimal(12, 2)
+  frequency      FeeFrequency @default(MONTHLY)
+  /// Day of month invoices fall due (1–28).
+  dueDay         Int          @default(10)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  academicYear AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  class        Class?        @relation(fields: [classId], references: [id], onDelete: SetNull)
+  studentFees  StudentFee[]
+  invoiceItems InvoiceItem[]
+
+  @@index([organizationId, classId])
+  @@map("fee_structures")
+}
+
+/// Assignment of a fee structure to a student, with an optional discount.
+model StudentFee {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  studentId      String       @db.Uuid
+  feeStructureId String       @db.Uuid
+  discountType   DiscountType @default(NONE)
+  discountValue  Decimal      @default(0) @db.Decimal(12, 2)
+  discountReason String?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  feeStructure FeeStructure @relation(fields: [feeStructureId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, feeStructureId])
+  @@index([organizationId])
+  @@map("student_fees")
+}
+
+model Invoice {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  campusId       String        @db.Uuid
+  studentId      String        @db.Uuid
+  invoiceNo      String
+  /// "YYYY-MM" for generated monthly invoices; makes generation idempotent.
+  billingPeriod  String?
+  title          String
+  issueDate      DateTime      @db.Date
+  dueDate        DateTime      @db.Date
+  subtotal       Decimal       @db.Decimal(12, 2)
+  discount       Decimal       @default(0) @db.Decimal(12, 2)
+  fine           Decimal       @default(0) @db.Decimal(12, 2)
+  total          Decimal       @db.Decimal(12, 2)
+  amountPaid     Decimal       @default(0) @db.Decimal(12, 2)
+  status         InvoiceStatus @default(PENDING)
+  notes          String?
+  createdById    String?       @db.Uuid
+  lastReminderAt DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  cancelledAt    DateTime?
+
+  student  Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  items    InvoiceItem[]
+  payments Payment[]
+
+  @@unique([organizationId, invoiceNo])
+  @@unique([studentId, billingPeriod])
+  @@index([organizationId, status, dueDate])
+  @@index([organizationId, campusId])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @db.Uuid
+  invoiceId      String      @db.Uuid
+  feeStructureId String?     @db.Uuid
+  description    String
+  category       FeeCategory
+  amount         Decimal     @db.Decimal(12, 2)
+  discount       Decimal     @default(0) @db.Decimal(12, 2)
+  total          Decimal     @db.Decimal(12, 2)
+
+  invoice      Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  feeStructure FeeStructure? @relation(fields: [feeStructureId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model Payment {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  campusId       String        @db.Uuid
+  invoiceId      String        @db.Uuid
+  studentId      String        @db.Uuid
+  receiptNo      String
+  amount         Decimal       @db.Decimal(12, 2)
+  method         PaymentMethod
+  reference      String?
+  paidAt         DateTime
+  receivedById   String?       @db.Uuid
+  notes          String?
+  status         PaymentStatus @default(COMPLETED)
+  voidedAt       DateTime?
+  voidReason     String?
+  /// Client-supplied key so a retried request never records a payment twice.
+  idempotencyKey String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, receiptNo])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, paidAt])
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+/// Per-organization counters for human-readable numbers (INV-000123, RCP-000045).
+model Sequence {
+  organizationId String @db.Uuid
+  key            String
+  value          Int    @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, key])
+  @@map("sequences")
+}
+
+// ───────────────────────────── Exams ─────────────────────────────
+
+model Exam {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @db.Uuid
+  campusId       String?    @db.Uuid
+  academicYearId String?    @db.Uuid
+  name           String
+  type           ExamType   @default(OTHER)
+  startDate      DateTime   @db.Date
+  endDate        DateTime   @db.Date
+  status         ExamStatus @default(DRAFT)
+  description    String?
+  publishedAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  academicYear AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  subjects     ExamSubject[]
+  results      Result[]
+
+  @@index([organizationId, status])
+  @@map("exams")
+}
+
+model ExamSubject {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  examId         String   @db.Uuid
+  classId        String   @db.Uuid
+  subjectId      String   @db.Uuid
+  roomId         String?  @db.Uuid
+  date           DateTime? @db.Date
+  startMinute    Int?
+  endMinute      Int?
+  maxMarks       Decimal  @db.Decimal(6, 2)
+  passMarks      Decimal  @db.Decimal(6, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  exam    Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  room    Room?   @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  marks   Mark[]
+
+  @@unique([examId, classId, subjectId])
+  @@index([organizationId])
+  @@map("exam_subjects")
+}
+
+model Mark {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  examSubjectId  String   @db.Uuid
+  studentId      String   @db.Uuid
+  marksObtained  Decimal? @db.Decimal(6, 2)
+  isAbsent       Boolean  @default(false)
+  remarks        String?
+  enteredById    String?  @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  examSubject ExamSubject @relation(fields: [examSubjectId], references: [id], onDelete: Cascade)
+  student     Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([examSubjectId, studentId])
+  @@index([organizationId, studentId])
+  @@map("marks")
+}
+
+model Result {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  examId         String       @db.Uuid
+  studentId      String       @db.Uuid
+  totalObtained  Decimal      @db.Decimal(8, 2)
+  totalMax       Decimal      @db.Decimal(8, 2)
+  percentage     Decimal      @db.Decimal(5, 2)
+  grade          String
+  position       Int?
+  status         ResultStatus
+  remarks        String?
+  computedAt     DateTime     @default(now())
+  publishedAt    DateTime?
+
+  exam    Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, studentId])
+  @@index([organizationId, studentId])
+  @@map("results")
+}
+
+// ───────────────────────── Communication ─────────────────────────
+
+model Announcement {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @db.Uuid
+  campusId       String?              @db.Uuid
+  title          String
+  body           String
+  audience       AnnouncementAudience @default(ORGANIZATION)
+  /// Class or section id when the audience is CLASS / SECTION.
+  audienceRefId  String?              @db.Uuid
+  channels       NotificationChannel[] @default([IN_APP])
+  status         AnnouncementStatus   @default(DRAFT)
+  isPinned       Boolean              @default(false)
+  authorId       String?              @db.Uuid
+  publishedAt    DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([organizationId, status, publishedAt])
+  @@map("announcements")
+}
+
+model Notification {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String?   @db.Uuid
+  userId         String    @db.Uuid
+  type           String
+  title          String
+  body           String
+  link           String?
+  entityType     String?
+  entityId       String?   @db.Uuid
+  /// Prevents the same event notifying the same user twice (retry-safe jobs).
+  dedupeKey      String?
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+model NotificationTemplate {
+  id             String              @id @default(uuid()) @db.Uuid
+  /// Null = platform default template.
+  organizationId String?             @db.Uuid
+  key            String
+  channel        NotificationChannel
+  locale         String              @default("en")
+  subject        String?
+  body           String
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([organizationId, key, channel, locale])
+  @@map("notification_templates")
+}
+
+/// Outbox for external channels (email/SMS/WhatsApp/push). Processed by the job worker.
+model NotificationDelivery {
+  id                String              @id @default(uuid()) @db.Uuid
+  organizationId    String?             @db.Uuid
+  channel           NotificationChannel
+  recipient         String
+  templateKey       String
+  payload           Json                @default("{}")
+  status            DeliveryStatus      @default(PENDING)
+  attempts          Int                 @default(0)
+  lastError         String?
+  provider          String?
+  providerMessageId String?
+  dedupeKey         String              @unique
+  scheduledAt       DateTime            @default(now())
+  sentAt            DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([organizationId, createdAt])
+  @@map("notification_deliveries")
+}
+
+/// Provider credentials (WhatsApp, SMS, email…) encrypted with AES-256-GCM.
+model IntegrationCredential {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @db.Uuid
+  provider        String
+  encryptedConfig String
+  isEnabled       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, provider])
+  @@map("integration_credentials")
+}
+
+// ─────────────────────────── Documents ───────────────────────────
+
+model Document {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  campusId       String?          @db.Uuid
+  category       DocumentCategory
+  title          String
+  fileName       String
+  storageKey     String           @unique
+  mimeType       String
+  sizeBytes      Int
+  checksum       String
+  /// Owning record, e.g. ("student", <id>) or ("staff", <id>).
+  entityType     String?
+  entityId       String?          @db.Uuid
+  uploadedById   String?          @db.Uuid
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  archivedAt     DateTime?
+
+  @@index([organizationId, category])
+  @@index([organizationId, entityType, entityId])
+  @@map("documents")
+}
+
+// ───────────────────────────── SaaS ──────────────────────────────
+
+model Plan {
+  id           String   @id @default(uuid()) @db.Uuid
+  key          String   @unique
+  name         String
+  description  String
+  priceMonthly Decimal  @db.Decimal(12, 2)
+  priceYearly  Decimal  @db.Decimal(12, 2)
+  currency     String   @default("PKR")
+  /// { students, teachers, staff, campuses, storageMb, notificationsPerMonth, apiRequestsPerDay } — null = unlimited
+  limits       Json
+  features     String[]
+  trialDays    Int      @default(14)
+  isPublic     Boolean  @default(true)
+  isCustom     Boolean  @default(false)
+  highlighted  Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                 String             @id @default(uuid()) @db.Uuid
+  organizationId     String             @unique @db.Uuid
+  planId             String             @db.Uuid
+  status             SubscriptionStatus @default(TRIALING)
+  billingCycle       BillingCycle       @default(MONTHLY)
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean            @default(false)
+  canceledAt         DateTime?
+  /// Enterprise overrides merged over the plan limits.
+  customLimits       Json?
+  customPrice        Decimal?           @db.Decimal(12, 2)
+  externalId         String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         Plan             @relation(fields: [planId], references: [id])
+  invoices     BillingInvoice[]
+
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model SubscriptionUsage {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  metric         String
+  /// "YYYY-MM" or "YYYY-MM-DD" depending on the metric window.
+  period         String
+  value          BigInt   @default(0)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, metric, period])
+  @@map("subscription_usage")
+}
+
+model BillingInvoice {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @db.Uuid
+  subscriptionId String               @db.Uuid
+  number         String               @unique
+  amount         Decimal              @db.Decimal(12, 2)
+  currency       String
+  periodStart    DateTime
+  periodEnd      DateTime
+  status         BillingInvoiceStatus @default(OPEN)
+  issuedAt       DateTime             @default(now())
+  dueAt          DateTime
+  paidAt         DateTime?
+  paymentNote    String?
+  createdAt      DateTime             @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("billing_invoices")
+}
+
+// ─────────────────────────── Platform ────────────────────────────
+
+model AuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  userId         String?  @db.Uuid
+  action         String
+  entityType     String
+  entityId       String?
+  ipAddress      String?
+  userAgent      String?
+  before         Json?
+  after          Json?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType, entityId])
+  @@map("audit_logs")
+}
+
+model SupportTicket {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  number         Int
+  createdById    String         @db.Uuid
+  assigneeId     String?        @db.Uuid
+  subject        String
+  category       String         @default("general")
+  priority       TicketPriority @default(MEDIUM)
+  status         TicketStatus   @default(OPEN)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  resolvedAt     DateTime?
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  messages     SupportTicketMessage[]
+
+  @@unique([organizationId, number])
+  @@index([status, priority])
+  @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  ticketId       String   @db.Uuid
+  authorId       String   @db.Uuid
+  body           String
+  /// Internal notes are only visible to platform staff.
+  isInternal     Boolean  @default(false)
+  attachmentIds  String[] @default([])
+  createdAt      DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@map("support_ticket_messages")
+}
+
+model ImportBatch {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  type           ImportType
+  fileName       String
+  status         ImportStatus
+  totalRows      Int
+  importedRows   Int          @default(0)
+  failedRows     Int          @default(0)
+  errors         Json         @default("[]")
+  createdById    String?      @db.Uuid
+  createdAt      DateTime     @default(now())
+  completedAt    DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("import_batches")
+}
+
+/// Durable background job queue (claimed with FOR UPDATE SKIP LOCKED).
+model Job {
+  id          String    @id @default(uuid()) @db.Uuid
+  type        String
+  payload     Json      @default("{}")
+  status      JobStatus @default(PENDING)
+  runAt       DateTime  @default(now())
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  lastError   String?
+  lockedAt    DateTime?
+  lockedBy    String?
+  /// Makes enqueueing idempotent, e.g. "daily-summary:<org>:2026-10-02".
+  dedupeKey   String?   @unique
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAt])
+  @@map("jobs")
+}
+
+/// Fixed-window rate limiter shared by all app instances.
+model RateLimit {
+  key         String   @id
+  count       Int
+  windowStart DateTime
+
+  @@map("rate_limits")
+}
